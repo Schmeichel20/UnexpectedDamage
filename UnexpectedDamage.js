@@ -1229,8 +1229,10 @@ NightBattlePower.prototype.getCutinBonus = function () {
             if ((kind1 + kind2 + kind3) === 3) return 1.18
             return 1.0
         case 7:             // 駆逐カットイン(主砲/魚雷/電探)
+        case 11:            // 2-hit variant
             return 1.3 * modelDGunBonus
         case 8:             // 駆逐カットイン(魚雷/見張員/電探)
+        case 12:            // 2-hit variant
             // 魚雷
             var torpedo = items.filter(function (item) { return item.type2 === 5 }).length
             // 見張員
@@ -1249,6 +1251,12 @@ NightBattlePower.prototype.getCutinBonus = function () {
                 return 1.3
             }
             return 1
+        case 9:     // DD cut-in, Torp *2 + TorpRon Lookout
+        case 13:    // 2-hit variant
+            return 1.5
+        case 10:    // DD cut-in, Torp + Drum + TorpRon Lookout
+        case 14:    // 2-hit variant
+            return 1.3
         default: return getSpecialAttackBonus(this)
     }
 }

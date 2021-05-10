@@ -3,6 +3,13 @@
 [![GitHub release](https://img.shields.io/github/release/Nishisonic/UnexpectedDamage.svg)](https://github.com/Nishisonic/UnexpectedDamage/releases/latest)
 [![License](https://img.shields.io/npm/l/express.svg)](https://github.com/Nishisonic/UnexpectedDamage/blob/master/LICENSE)
 
+## Fork description  
+
+Emergency fixes according to latest findings.  
+Translations too, perhaps.  
+  
+All credits go to [Nishikuma](https://twitter.com/nishikkuma) and all the players that provided data.  
+
 ## 紹介
 
 異常ダメージ検知は[航海日誌拡張版](http://nekopanda.blog.jp/)または[【赤版】航海日誌拡張版](https://github.com/noratako5/logbook)と組み合わせて使うスクリプトです。
