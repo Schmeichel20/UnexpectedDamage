@@ -1,6 +1,6 @@
 /**
  * 異常ダメージ検知
- * @version 2.1.7
+ * @version 2.5.8
  * @author Nishikuma
  */
 
@@ -38,6 +38,7 @@ function header() {
 
 function begin() {
     updateFile()
+    loadAkakariLogIfNeeded()
     setTmpData("ini", false)
     setTmpData("unexpected", {})
 }
@@ -64,6 +65,40 @@ function body(battle) {
 
 function end() {
     setTmpData("ini", true)
+}
+
+/**
+ * 赤仮の出撃ログを本体より先に読み込む
+ */
+function loadAkakariLogIfNeeded() {
+    if (!isAkakari) return
+
+    ApplicationMain = Java.type("logbook.gui.ApplicationMain")
+    AkakariSyutsugekiLogReader = Java.type("logbook.builtinscript.akakariLog.AkakariSyutsugekiLogReader")
+
+    try {
+        if(AkakariSyutsugekiLogReader.needConvert()) {
+            ApplicationMain.logPrint("赤仮出撃ログのコンバート開始<<UnexpectedDamage>>")
+            AkakariSyutsugekiLogReader.convertAllOldLog()
+            ApplicationMain.logPrint("赤仮出撃ログのコンバート完了<<UnexpectedDamage>>")
+        }
+    } catch (e) { 
+        ApplicationMain.logPrint("赤仮出撃ログのコンバートに失敗しました<<UnexpectedDamage>>")
+    }
+    try {
+        ApplicationMain.logPrint("赤仮出撃ログの圧縮開始<<UnexpectedDamage>>")
+        AkakariSyutsugekiLogReader.allRawLogToZstdLog()
+        ApplicationMain.logPrint("赤仮出撃ログの圧縮完了<<UnexpectedDamage>>")
+    } catch (e){
+        ApplicationMain.logPrint("赤仮出撃ログの圧縮に失敗しました<<UnexpectedDamage>>")
+    }
+    try {
+        ApplicationMain.logPrint("赤仮出撃ログの読み込み中<<UnexpectedDamage>>")
+        AkakariSyutsugekiLogReader.loadAllStartPortDate()
+        ApplicationMain.logPrint("赤仮出撃ログの読み込み完了<<UnexpectedDamage>>")
+    } catch (e) {
+        ApplicationMain.logPrint("赤仮出撃ログの読み込みに失敗しました<<UnexpectedDamage>>")
+    }
 }
 
 /**
@@ -102,11 +137,11 @@ var isInvestiagate = function (battle) {
         // 演習は除外
         && !battle.isPractice()
         // 一期のデータは除外
-        && END_1ST_MAP_DATE.before(battle.battleDate)
+        && battle.battleDate.after(END_1ST_MAP_DATE)
         // 渦潮(弾薬減)マップ除外
         && !(MAELSTROM_MAP_LIST.some(function (map) { return map[0] === battle.mapCellDto.map[0] && map[1] === battle.mapCellDto.map[1] }))
         // 過去のイベント分は除外
-        && !(battle.mapCellDto.map[0] >= 22 && battle.mapCellDto.map[0] <= 45)
+        && !(battle.mapCellDto.map[0] >= 22 && battle.mapCellDto.map[0] <= 51)
     // 何らかのフィルタを条件する際はここに追加
 }
 
@@ -346,13 +381,15 @@ var parse = function (date, mapCell, phaseList, friendNum, friendNumCombined, en
     // 航空戦フェーズ
     phaseList.forEach(function (phase) {
         // 航空戦全生成
+        // 基地航空隊(噴式) -> 基地航空隊 -> 友軍艦隊(昼) -> 噴式強襲航空戦 -> 航空戦1 -> 航空戦2 -> 航空支援
         var airBattleList = [
             phase.airBaseInjection,                                                 // 基地航空隊(噴式)
+            phase.support_kouku,                                                    // 友軍艦隊(昼)
             phase.airInjection,                                                     // 噴式強襲航空戦
             phase.air,                                                              // 航空戦1
             phase.air2,                                                             // 航空戦2
             { atacks: (phase.supportType === '航空支援' ? phase.support : null) },  // 航空支援
-        ].concat(Java.from(phase.airBase))                                          // 基地航空隊
+        ].concat(Java.from(phase.airBase))                                 // 基地航空隊
             // null除外
             .filter(function (battle) { return battle && battle.atacks })
 
@@ -933,7 +970,7 @@ var detectDayBattle = function (date, mapCell, kind, friendCombinedKind, isEnemy
                         var skilled = getSkilledBonus(date, attack, ship.attacker, ship.defender, hp.attacker)
 
                         if (!isSubMarine(ship.defender) && p.isAPshellBonusTarget() && isCritical(attack)) {
-                            var power2 = p.getPostcapPower(true)
+                            var power2 = p.getPostcapPower(false, true)
                             // [[[キャップ後攻撃力] * 弾着観測射撃 * 戦爆連合カットイン攻撃 * イベント特効 * 徹甲弾補正] * クリティカル補正]
                             inversion.minEx = Math.ceil(Math.ceil(minPostcapPower) / getCriticalBonus(attack)) / power2[1] / skilled[1]
                             inversion.maxEx = Math.ceil(Math.ceil(maxPostcapPower) / getCriticalBonus(attack)) / power2[0] / skilled[0]
@@ -949,7 +986,7 @@ var detectDayBattle = function (date, mapCell, kind, friendCombinedKind, isEnemy
                         }
                         if (mapCell.map[0] >= 22 && attack.friendAttack) {
                             // 割合ダメージ等ではない&(敵が陸上型またはPT小鬼群または熟練度補正攻撃ではない)
-                            if (!covered && !(isGround(ship.defender) || isPT(ship.defender) || skilled[0] > 1)) {
+                            if (!covered && !(isGround(ship.defender) || isPtImpPack(ship.defender) || skilled[0] > 1)) {
                                 var maps = JSON.stringify(Java.from(mapCell.map))
                                 var index = ship.attacker.shipId + "_" + ship.attacker.friendlyName.replace(/\(.*\)$/, "") + "_" + ship.defender.shipId + "_" + ship.defender.friendlyName.replace(/\(.*\)$/, "")
 
@@ -1036,7 +1073,7 @@ var detectTorpedoAttack = function (date, mapCell, kind, friendCombinedKind, isE
                 }
                 if (mapCell.map[0] >= 22) {
                     // 割合ダメージ等ではない&(敵がPT小鬼群ではない)
-                    if (!covered && !isPT(ship.defender)) {
+                    if (!covered && !isPtImpPack(ship.defender)) {
                         var maps = JSON.stringify(Java.from(mapCell.map))
                         var index = ship.attacker.shipId + "_" + ship.attacker.friendlyName.replace(/\(.*\)$/, "") + "_" + ship.defender.shipId + "_" + ship.defender.friendlyName.replace(/\(.*\)$/, "")
 
@@ -1195,7 +1232,7 @@ var detectNightBattle = function (date, mapCell, kind, friendCombinedKind, isEne
                             // 熟練度
                             var skilled = getSkilledBonus(date, attack, ship.attacker, ship.defender, hp.attacker)
                             // 割合ダメージ等ではない&(敵が陸上型またはPT小鬼群または熟練度補正攻撃ではない)
-                            if (!covered && !(isGround(ship.defender) || isPT(ship.defender) || skilled[0] > 1)) {
+                            if (!covered && !(isGround(ship.defender) || isPtImpPack(ship.defender) || skilled[0] > 1)) {
                                 var maps = JSON.stringify(Java.from(mapCell.map))
                                 var index = ship.attacker.shipId + "_" + ship.attacker.friendlyName.replace(/\(.*\)$/, "") + "_" + ship.defender.shipId + "_" + ship.defender.friendlyName.replace(/\(.*\)$/, "")
 
